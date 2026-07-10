@@ -1,0 +1,7 @@
+pandas
+numpy
+alpaca-py
+supabase
+requests
+pandas_market_calendars
+pytest

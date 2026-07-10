@@ -1,0 +1,26 @@
+# Python
+scanner/venv/
+scanner/__pycache__/
+scanner/**/__pycache__/
+scanner/.pytest_cache/
+*.pyc
+
+# Env files / secrets — never commit these
+.env
+.env.*
+scanner/.env
+
+# Node / Next.js (dashboard)
+dashboard/node_modules/
+dashboard/.next/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
