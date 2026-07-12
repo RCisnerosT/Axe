@@ -3,7 +3,7 @@ import pandas_market_calendars as mcal
 
 NYSE = mcal.get_calendar("NYSE")
 
-BAR_COLUMNS = ["timestamp", "open", "high", "low", "close", "volume"]
+BAR_COLUMNS = ["timestamp", "ts_close", "open", "high", "low", "close", "volume"]
 
 # Sub-bars per bucket, anchored to each session window's own open rather
 # than the clock hour — e.g. the first regular-session "1h" bucket is
@@ -54,11 +54,17 @@ def _bucket_and_aggregate(bars: pd.DataFrame, bar_span: pd.Timedelta, bars_per_b
     each bar's session window open, and aggregate each bucket into one
     OHLCV bar.
 
+    `bars` must carry a `ts_close` column (the true close time of each
+    input bar). The output's `ts_close` is the *last* sub-bar's own
+    ts_close, not `timestamp + bar_span` — that stays correct even for a
+    short trailing bucket (e.g. the last half hour of the 6.5h regular
+    session), where adding the nominal bar_span would overshoot past
+    market close.
+
     The trailing bucket is dropped if it belongs to a session window that
     hasn't closed yet (still forming) and is short of a full bucket. A
-    short trailing bucket on an already-closed window (e.g. the last half
-    hour of the 6.5h regular session, which isn't a multiple of 1h or 4h)
-    is kept: no more bars will ever arrive to fill it.
+    short trailing bucket on an already-closed window is kept: no more
+    bars will ever arrive to fill it.
     """
     bars = bars.sort_values("timestamp").reset_index(drop=True)
     windows = _assign_windows(bars)
@@ -76,6 +82,7 @@ def _bucket_and_aggregate(bars: pd.DataFrame, bar_span: pd.Timedelta, bars_per_b
     return pd.DataFrame(
         {
             "timestamp": grouped["timestamp"].first(),
+            "ts_close": grouped["ts_close"].last(),
             "open": grouped["open"].first(),
             "high": grouped["high"].max(),
             "low": grouped["low"].min(),
@@ -88,6 +95,7 @@ def _bucket_and_aggregate(bars: pd.DataFrame, bar_span: pd.Timedelta, bars_per_b
 def resample_cascade(bars_30m: pd.DataFrame, now: pd.Timestamp | None = None) -> dict:
     """Aggregate 30m bars into 1h and 4h bars, cascading 30m -> 1h -> 4h."""
     now = now if now is not None else pd.Timestamp.now(tz="UTC")
+    bars_30m = bars_30m.assign(ts_close=bars_30m["timestamp"] + pd.Timedelta(minutes=30))
 
     bars_1h = _bucket_and_aggregate(bars_30m, pd.Timedelta(minutes=30), BARS_PER_BUCKET["1h"], now)
     bars_4h = _bucket_and_aggregate(bars_1h, pd.Timedelta(hours=1), BARS_PER_BUCKET["4h"], now)

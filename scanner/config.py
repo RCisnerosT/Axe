@@ -19,6 +19,9 @@ UNIVERSE = [
     {"ticker": "SLV", "name": "iShares Silver Trust", "type": "etf"},
     {"ticker": "USO", "name": "United States Oil Fund", "type": "etf"},
     {"ticker": "UNG", "name": "United States Natural Gas Fund", "type": "etf"},
+    # Leveraged semiconductor ETFs
+    {"ticker": "SOXL", "name": "Direxion Daily Semiconductor Bull 3X", "type": "etf"},
+    {"ticker": "SOXS", "name": "Direxion Daily Semiconductor Bear 3X", "type": "etf"},
 ]
 
 RSI_PERIOD = 14

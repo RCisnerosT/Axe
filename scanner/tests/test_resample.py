@@ -45,6 +45,40 @@ def test_completed_session_keeps_short_trailing_bucket():
     assert len(result["4h"]) == 2
 
 
+def test_short_trailing_bucket_closes_at_actual_market_close_not_nominal_span():
+    # The short trailing 1h bucket (15:30-16:00, only one 30m bar) must
+    # close at 16:00 ET (market close) -- NOT 16:30, which is what
+    # `timestamp + 1h` would naively give. Same for the short trailing 4h
+    # bucket (13:30-16:00): must close at 16:00 ET, not 17:30.
+    bars = _bars("2026-01-05", FULL_SESSION_TIMES)
+    now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")
+
+    result = resample_cascade(bars, now=now)
+
+    last_1h = result["1h"].iloc[-1]
+    assert last_1h["timestamp"].tz_convert(ET).strftime("%H:%M") == "15:30"
+    assert last_1h["ts_close"].tz_convert(ET).strftime("%H:%M") == "16:00"
+
+    last_4h = result["4h"].iloc[-1]
+    assert last_4h["timestamp"].tz_convert(ET).strftime("%H:%M") == "13:30"
+    assert last_4h["ts_close"].tz_convert(ET).strftime("%H:%M") == "16:00"
+
+
+def test_full_bucket_closes_at_nominal_span():
+    bars = _bars("2026-01-05", FULL_SESSION_TIMES)
+    now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")
+
+    result = resample_cascade(bars, now=now)
+
+    first_1h = result["1h"].iloc[0]
+    assert first_1h["timestamp"].tz_convert(ET).strftime("%H:%M") == "09:30"
+    assert first_1h["ts_close"].tz_convert(ET).strftime("%H:%M") == "10:30"
+
+    first_4h = result["4h"].iloc[0]
+    assert first_4h["timestamp"].tz_convert(ET).strftime("%H:%M") == "09:30"
+    assert first_4h["ts_close"].tz_convert(ET).strftime("%H:%M") == "13:30"
+
+
 def test_completed_session_aggregation_values_are_correct():
     bars = _bars("2026-01-05", FULL_SESSION_TIMES)
     now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")

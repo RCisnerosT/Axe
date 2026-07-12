@@ -28,9 +28,13 @@ def test_compute_signals_runs_end_to_end_for_all_timeframes():
         assert not bars.empty, f"no bars returned for {timeframe}"
         assert "rsi" in bars.columns
         assert (bars["rsi"].dropna() >= 0).all() and (bars["rsi"].dropna() <= 100).all()
+        # ts_close must be strictly after the bar's own open (ts)
+        assert (bars["ts_close"] > bars["ts"]).all()
         # divergence, if any, must reference two pivots of the same kind
         if result["divergence"] is not None:
             pivot_1, pivot_2, direction, strength = result["divergence"]
             assert pivot_1["kind"] == pivot_2["kind"]
             assert direction in ("bullish", "bearish")
             assert strength in ("strong", "weak")
+            assert pivot_1["ts_close"] > pivot_1["ts"]
+            assert pivot_2["ts_close"] > pivot_2["ts"]

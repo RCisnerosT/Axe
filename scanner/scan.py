@@ -49,7 +49,15 @@ def scan_ticker(supabase, alpaca, ticker: str) -> None:
             pivot_2["price_value"],
         )
         if divergence_id is not None:
-            telegram.send_divergence_alert(ticker, timeframe, direction, strength, pivot_2["price_value"])
+            telegram.send_divergence_alert(
+                ticker,
+                timeframe,
+                direction,
+                strength,
+                pivot_2["price_value"],
+                pivot_1["ts_close"],
+                pivot_2["ts_close"],
+            )
             supabase_client.mark_alerted(supabase, divergence_id)
 
 

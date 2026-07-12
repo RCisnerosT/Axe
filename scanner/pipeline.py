@@ -7,13 +7,29 @@ from alpaca_client import get_bars
 from divergence import find_latest_divergence
 from indicators import wilder_rsi
 from pivots import find_pivots
-from resample import resample_cascade
+from resample import NYSE, resample_cascade
 
 
 def _with_rsi(bars: pd.DataFrame) -> pd.DataFrame:
     df = bars.rename(columns={"timestamp": "ts"})
     df["rsi"] = wilder_rsi(df["close"], period=config.RSI_PERIOD)
     return df
+
+
+def _with_daily_close_ts(bars_1d: pd.DataFrame) -> pd.DataFrame:
+    """Daily bars from Alpaca aren't timestamped at market close, but a
+    "1d" pivot/divergence should still be reported by its actual close
+    (16:00 ET, or earlier on a half day) rather than its open."""
+    if bars_1d.empty:
+        return bars_1d.assign(ts_close=bars_1d["timestamp"])
+
+    start = bars_1d["timestamp"].min().date() - pd.Timedelta(days=1)
+    end = bars_1d["timestamp"].max().date() + pd.Timedelta(days=1)
+    schedule = NYSE.schedule(start_date=start, end_date=end)
+    close_by_date = dict(zip(schedule.index.date, schedule["market_close"]))
+
+    ts_close = bars_1d["timestamp"].dt.date.map(close_by_date)
+    return bars_1d.assign(ts_close=ts_close)
 
 
 def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
@@ -28,12 +44,20 @@ def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
     bars_30m = get_bars(client, ticker, "30m", start=start)
     bars_1d = get_bars(client, ticker, "1d", start=start)
     resampled = resample_cascade(bars_30m)
-    raw_bars = {"30m": bars_30m, "1h": resampled["1h"], "4h": resampled["4h"], "1d": bars_1d}
+    raw_bars = {
+        "30m": bars_30m.assign(ts_close=bars_30m["timestamp"] + pd.Timedelta(minutes=30)),
+        "1h": resampled["1h"],
+        "4h": resampled["4h"],
+        "1d": _with_daily_close_ts(bars_1d),
+    }
 
     signals = {}
     for timeframe in config.TIMEFRAMES:
         df = _with_rsi(raw_bars[timeframe])
         pivots = find_pivots(df, width=config.FRACTAL_WIDTH)
+        if not pivots.empty:
+            ts_close = df.loc[pivots["index"], "ts_close"].reset_index(drop=True)
+            pivots = pivots.assign(ts_close=ts_close)
         divergence = find_latest_divergence(pivots) if not pivots.empty else None
         signals[timeframe] = {"bars": df, "pivots": pivots, "divergence": divergence}
     return signals
