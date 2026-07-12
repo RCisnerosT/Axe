@@ -15,13 +15,8 @@ UNIVERSE = [
     # Index ETFs
     {"ticker": "SPY", "name": "SPDR S&P 500", "type": "etf"},
     {"ticker": "QQQ", "name": "Invesco QQQ (Nasdaq 100)", "type": "etf"},
-    {"ticker": "IWM", "name": "iShares Russell 2000", "type": "etf"},
-    {"ticker": "DIA", "name": "SPDR Dow Jones", "type": "etf"},
     # Commodities (via liquid, optionable ETFs)
     {"ticker": "GLD", "name": "SPDR Gold Shares", "type": "etf"},
-    {"ticker": "SLV", "name": "iShares Silver Trust", "type": "etf"},
-    {"ticker": "USO", "name": "United States Oil Fund", "type": "etf"},
-    {"ticker": "UNG", "name": "United States Natural Gas Fund", "type": "etf"},
     # Leveraged semiconductor ETFs
     {"ticker": "SOXL", "name": "Direxion Daily Semiconductor Bull 3X", "type": "etf"},
     {"ticker": "SOXS", "name": "Direxion Daily Semiconductor Bear 3X", "type": "etf"},
