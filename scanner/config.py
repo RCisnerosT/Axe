@@ -1,4 +1,7 @@
-TIMEFRAMES = ["30m", "1h", "4h", "1d"]
+# 30m bars are still fetched natively and used as the base for resampling
+# into 1h/4h (see resample.py) -- they're just not scanned for
+# pivots/divergences on their own anymore.
+TIMEFRAMES = ["1h", "4h", "1d"]
 
 UNIVERSE = [
     # Magnificent 7
@@ -32,7 +35,6 @@ FRACTAL_WIDTH = 2  # N bars on each side required to confirm a swing pivot
 
 # Bar horizon used by backtest.py to force an exit if no opposite signal appears
 BACKTEST_HORIZON_BARS = {
-    "30m": 40,
     "1h": 40,
     "4h": 20,
     "1d": 15,
