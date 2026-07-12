@@ -5,12 +5,14 @@ from pivots import find_pivots
 PRICES = [1, 2, 3, 2, 1, 2, 3, 4, 3, 2, 1]
 
 
-def _df(prices, rsi=None):
+def _df(prices, rsi=None, low=None, high=None):
     n = len(prices)
     return pd.DataFrame(
         {
             "ts": pd.date_range("2026-01-01", periods=n, freq="h"),
             "close": prices,
+            "low": low if low is not None else prices,
+            "high": high if high is not None else prices,
             "rsi": rsi if rsi is not None else [50.0] * n,
         }
     )
@@ -55,3 +57,31 @@ def test_wider_fractal_width_finds_fewer_pivots():
     narrow = find_pivots(_df(PRICES), width=1)
     wide = find_pivots(_df(PRICES), width=3)
     assert len(wide) <= len(narrow)
+
+
+def test_pivots_use_wick_extreme_not_close():
+    # Bar 2's close makes it look like a lower high than a naive
+    # close-only reading would suggest, but its actual high (wick) is the
+    # true local max -- the pivot's value must be the wick, not the close.
+    closes = [1, 2, 1.5, 1, 0.5]
+    highs = [1, 2, 3, 1, 0.5]  # bar 2's wick spikes to 3, close settles at 1.5
+    lows = closes
+
+    pivots = find_pivots(_df(closes, low=lows, high=highs), width=1)
+
+    high_pivot = pivots[pivots["kind"] == "high"].iloc[0]
+    assert high_pivot["index"] == 2
+    assert high_pivot["price_value"] == 3  # the wick high, not the 1.5 close
+
+
+def test_single_bar_can_be_both_a_high_and_low_pivot():
+    # A bar with a wide range compared to its neighbors can be a local
+    # extreme on both its high and its low -- these are independent series.
+    closes = [1, 1, 1, 1, 1]
+    highs = [1, 1, 5, 1, 1]
+    lows = [1, 1, -5, 1, 1]
+
+    pivots = find_pivots(_df(closes, low=lows, high=highs), width=2)
+
+    kinds_at_2 = set(pivots[pivots["index"] == 2]["kind"])
+    assert kinds_at_2 == {"high", "low"}
