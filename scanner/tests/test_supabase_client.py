@@ -52,14 +52,19 @@ def test_round_trip_symbols_bars_pivots_and_divergence():
         pivot_1_id = ts_to_id[pivot_1["ts"].isoformat()]
         pivot_2_id = ts_to_id[pivot_2["ts"].isoformat()]
 
-        inserted = supabase_client.sync_divergence(
+        divergence_id = supabase_client.sync_divergence(
             supabase, "AAPL", timeframe, pivot_1_id, pivot_2_id, direction, pivot_2["price_value"]
         )
+        assert isinstance(divergence_id, int)
         # Re-running sync for the same pair must not insert a duplicate.
         inserted_again = supabase_client.sync_divergence(
             supabase, "AAPL", timeframe, pivot_1_id, pivot_2_id, direction, pivot_2["price_value"]
         )
-        assert inserted_again is False
+        assert inserted_again is None
+
+        supabase_client.mark_alerted(supabase, divergence_id)
+        stored_after_alert = supabase.table("divergences").select("alerted_at").eq("id", divergence_id).execute()
+        assert stored_after_alert.data[0]["alerted_at"] is not None
 
         stored_divergence = (
             supabase.table("divergences")

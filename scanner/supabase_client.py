@@ -100,10 +100,10 @@ def sync_divergence(
     pivot_2_id: int,
     direction: str,
     price_at_signal: float,
-) -> bool:
+):
     """Insert the divergence if this exact pivot pair hasn't been recorded
-    yet. Returns True if a new row was inserted (i.e. this is a fresh
-    signal, not one already seen on a prior scan run)."""
+    yet. Returns the new row's id (a fresh signal the caller should alert
+    on), or None if this pair was already seen on a prior scan run."""
     existing = (
         client.table("divergences")
         .select("id")
@@ -112,16 +112,26 @@ def sync_divergence(
         .execute()
     )
     if existing.data:
-        return False
+        return None
 
-    client.table("divergences").insert(
-        {
-            "ticker": ticker,
-            "timeframe": timeframe,
-            "direction": direction,
-            "pivot_1_id": pivot_1_id,
-            "pivot_2_id": pivot_2_id,
-            "price_at_signal": float(price_at_signal),
-        }
+    inserted = (
+        client.table("divergences")
+        .insert(
+            {
+                "ticker": ticker,
+                "timeframe": timeframe,
+                "direction": direction,
+                "pivot_1_id": pivot_1_id,
+                "pivot_2_id": pivot_2_id,
+                "price_at_signal": float(price_at_signal),
+            }
+        )
+        .execute()
+    )
+    return inserted.data[0]["id"]
+
+
+def mark_alerted(client: Client, divergence_id: int) -> None:
+    client.table("divergences").update({"alerted_at": pd.Timestamp.now(tz="UTC").isoformat()}).eq(
+        "id", divergence_id
     ).execute()
-    return True
