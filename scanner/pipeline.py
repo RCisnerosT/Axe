@@ -21,7 +21,7 @@ def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
     config.TIMEFRAMES, and run pivot/divergence detection on each.
 
     Returns {timeframe: {"bars": DataFrame, "pivots": DataFrame,
-    "divergence": (pivot_1, pivot_2, direction) | None}}.
+    "divergence": (pivot_1, pivot_2, direction, strength) | None}}.
     """
     start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 

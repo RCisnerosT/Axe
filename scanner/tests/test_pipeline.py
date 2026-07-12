@@ -30,6 +30,7 @@ def test_compute_signals_runs_end_to_end_for_all_timeframes():
         assert (bars["rsi"].dropna() >= 0).all() and (bars["rsi"].dropna() <= 100).all()
         # divergence, if any, must reference two pivots of the same kind
         if result["divergence"] is not None:
-            pivot_1, pivot_2, direction = result["divergence"]
+            pivot_1, pivot_2, direction, strength = result["divergence"]
             assert pivot_1["kind"] == pivot_2["kind"]
             assert direction in ("bullish", "bearish")
+            assert strength in ("strong", "weak")

@@ -15,12 +15,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_format_divergence_alert_includes_direction_ticker_and_price():
-    text = telegram.format_divergence_alert("AAPL", "1d", "bullish", 123.45)
+def test_format_divergence_alert_includes_direction_strength_ticker_and_price():
+    text = telegram.format_divergence_alert("AAPL", "1d", "bullish", "strong", 123.45)
     assert "BULLISH" in text
+    assert "STRONG" in text
     assert "AAPL" in text
     assert "1d" in text
     assert "123.45" in text
+
+
+def test_format_divergence_alert_labels_weak_signals():
+    text = telegram.format_divergence_alert("AAPL", "1d", "bullish", "weak", 123.45)
+    assert "weak" in text
 
 
 def test_send_message_reaches_telegram():
@@ -28,4 +34,4 @@ def test_send_message_reaches_telegram():
 
 
 def test_send_divergence_alert_reaches_telegram():
-    telegram.send_divergence_alert("AAPL", "1d", "bullish", 123.45)
+    telegram.send_divergence_alert("AAPL", "1d", "bullish", "strong", 123.45)

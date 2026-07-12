@@ -99,6 +99,7 @@ def sync_divergence(
     pivot_1_id: int,
     pivot_2_id: int,
     direction: str,
+    strength: str,
     price_at_signal: float,
 ):
     """Insert the divergence if this exact pivot pair hasn't been recorded
@@ -121,6 +122,7 @@ def sync_divergence(
                 "ticker": ticker,
                 "timeframe": timeframe,
                 "direction": direction,
+                "strength": strength,
                 "pivot_1_id": pivot_1_id,
                 "pivot_2_id": pivot_2_id,
                 "price_at_signal": float(price_at_signal),

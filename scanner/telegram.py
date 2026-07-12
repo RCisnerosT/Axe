@@ -26,9 +26,10 @@ def send_message(text: str) -> None:
     response.raise_for_status()
 
 
-def format_divergence_alert(ticker: str, timeframe: str, direction: str, price: float) -> str:
+def format_divergence_alert(ticker: str, timeframe: str, direction: str, strength: str, price: float) -> str:
+    strength_label = "STRONG" if strength == "strong" else "weak"
     lines = [
-        f"<b>{direction.upper()} divergence</b> — {ticker} ({timeframe})",
+        f"<b>{direction.upper()} divergence</b> ({strength_label}) — {ticker} ({timeframe})",
         f"Price at signal: {price:.2f}",
     ]
     dashboard_url = os.environ.get("DASHBOARD_URL")
@@ -37,8 +38,8 @@ def format_divergence_alert(ticker: str, timeframe: str, direction: str, price: 
     return "\n".join(lines)
 
 
-def send_divergence_alert(ticker: str, timeframe: str, direction: str, price: float) -> None:
-    send_message(format_divergence_alert(ticker, timeframe, direction, price))
+def send_divergence_alert(ticker: str, timeframe: str, direction: str, strength: str, price: float) -> None:
+    send_message(format_divergence_alert(ticker, timeframe, direction, strength, price))
 
 
 def send_health_check_alert(hours_since_last_success: float) -> None:

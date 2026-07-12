@@ -37,7 +37,7 @@ def scan_ticker(supabase, alpaca, ticker: str) -> None:
         if divergence is None:
             continue
 
-        pivot_1, pivot_2, direction = divergence
+        pivot_1, pivot_2, direction, strength = divergence
         divergence_id = supabase_client.sync_divergence(
             supabase,
             ticker,
@@ -45,10 +45,11 @@ def scan_ticker(supabase, alpaca, ticker: str) -> None:
             ts_to_id[pivot_1["ts"].isoformat()],
             ts_to_id[pivot_2["ts"].isoformat()],
             direction,
+            strength,
             pivot_2["price_value"],
         )
         if divergence_id is not None:
-            telegram.send_divergence_alert(ticker, timeframe, direction, pivot_2["price_value"])
+            telegram.send_divergence_alert(ticker, timeframe, direction, strength, pivot_2["price_value"])
             supabase_client.mark_alerted(supabase, divergence_id)
 
 
