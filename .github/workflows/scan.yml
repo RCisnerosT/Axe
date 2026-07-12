@@ -1,0 +1,35 @@
+name: scan
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Extended-hours window (~4:00-20:00 ET), odd minutes to dodge the
+    # top-of-hour pile-up that makes GitHub's schedule trigger run late.
+    # Two entries cover the UTC day-rollover across both EST and EDT:
+    - cron: "7,22,37,52 7-23 * * 1-5"
+    - cron: "7,22,37,52 0-1 * * 2-6"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: scanner
+        run: pip install -r requirements.txt
+
+      - name: Run scan
+        working-directory: scanner
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scan.py
