@@ -49,6 +49,28 @@ def _assign_windows(bars: pd.DataFrame) -> pd.DataFrame:
     return matched[["window_open", "window_close"]]
 
 
+def filter_regular_session(bars: pd.DataFrame) -> pd.DataFrame:
+    """Drop pre-market and after-hours bars, keeping only the regular
+    9:30-16:00 ET session -- thin pre/post-market volume produces noisy
+    wicks that don't reflect genuine price discovery."""
+    if bars.empty:
+        return bars
+    bars = bars.sort_values("timestamp").reset_index(drop=True)
+
+    start = bars["timestamp"].min().date() - pd.Timedelta(days=1)
+    end = bars["timestamp"].max().date() + pd.Timedelta(days=1)
+    schedule = NYSE.schedule(start_date=start, end_date=end).astype(
+        {"market_open": _TS_DTYPE, "market_close": _TS_DTYPE}
+    )
+
+    ts = bars[["timestamp"]].astype({"timestamp": _TS_DTYPE})
+    matched = pd.merge_asof(
+        ts, schedule[["market_open", "market_close"]], left_on="timestamp", right_on="market_open", direction="backward"
+    )
+    in_regular = (bars["timestamp"] >= matched["market_open"]) & (bars["timestamp"] < matched["market_close"])
+    return bars[in_regular].reset_index(drop=True)
+
+
 def _bucket_and_aggregate(bars: pd.DataFrame, bar_span: pd.Timedelta, bars_per_bucket: int, now: pd.Timestamp) -> pd.DataFrame:
     """Group consecutive bars into buckets of `bars_per_bucket`, anchored to
     each bar's session window open, and aggregate each bucket into one
@@ -92,9 +114,16 @@ def _bucket_and_aggregate(bars: pd.DataFrame, bar_span: pd.Timedelta, bars_per_b
     ).reset_index(drop=True)
 
 
-def resample_cascade(bars_30m: pd.DataFrame, now: pd.Timestamp | None = None) -> dict:
-    """Aggregate 30m bars into 1h and 4h bars, cascading 30m -> 1h -> 4h."""
+def resample_cascade(bars_30m: pd.DataFrame, now: pd.Timestamp | None = None, regular_session_only: bool = True) -> dict:
+    """Aggregate 30m bars into 1h and 4h bars, cascading 30m -> 1h -> 4h.
+
+    Pre-market/after-hours bars are dropped by default (see
+    `filter_regular_session`) rather than resampled into their own 1h/4h
+    bars.
+    """
     now = now if now is not None else pd.Timestamp.now(tz="UTC")
+    if regular_session_only:
+        bars_30m = filter_regular_session(bars_30m)
     bars_30m = bars_30m.assign(ts_close=bars_30m["timestamp"] + pd.Timedelta(minutes=30))
 
     bars_1h = _bucket_and_aggregate(bars_30m, pd.Timedelta(minutes=30), BARS_PER_BUCKET["1h"], now)

@@ -9,6 +9,12 @@ from indicators import wilder_rsi
 from pivots import find_pivots
 from resample import NYSE, resample_cascade
 
+SESSION_SCOPES = {
+    "1h": ("regular", "extended"),
+    "4h": ("regular", "extended"),
+    "1d": ("regular",),  # daily bars have no pre/post-market concept
+}
+
 
 def _with_rsi(bars: pd.DataFrame) -> pd.DataFrame:
     df = bars.rename(columns={"timestamp": "ts"})
@@ -32,32 +38,43 @@ def _with_daily_close_ts(bars_1d: pd.DataFrame) -> pd.DataFrame:
     return bars_1d.assign(ts_close=ts_close)
 
 
-def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
-    """Fetch real Alpaca bars for `ticker`, resample to all of
-    config.TIMEFRAMES, and run pivot/divergence detection on each.
+def _signals_for(df: pd.DataFrame) -> dict:
+    pivots = find_pivots(df, width=config.FRACTAL_WIDTH)
+    if not pivots.empty:
+        ts_close = df.loc[pivots["index"], "ts_close"].reset_index(drop=True)
+        pivots = pivots.assign(ts_close=ts_close)
+    divergence = find_latest_divergence(pivots) if not pivots.empty else None
+    return {"bars": df, "pivots": pivots, "divergence": divergence}
 
-    Returns {timeframe: {"bars": DataFrame, "pivots": DataFrame,
-    "divergence": (pivot_1, pivot_2, direction, strength) | None}}.
+
+def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
+    """Fetch real Alpaca bars for `ticker` and run pivot/divergence
+    detection on every (timeframe, session_scope) combination: 1h/4h are
+    computed both on regular-session-only bars and on the full
+    pre+regular+post extended set, since thin pre/post-market volume can
+    produce different (often noisier) pivots than regular hours alone. 1d
+    only has a "regular" scope.
+
+    Returns {timeframe: {session_scope: {"bars": DataFrame,
+    "pivots": DataFrame, "divergence": (pivot_1, pivot_2, direction,
+    strength) | None}}}.
     """
     start = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
     bars_30m = get_bars(client, ticker, "30m", start=start)
     bars_1d = get_bars(client, ticker, "1d", start=start)
-    resampled = resample_cascade(bars_30m)
-    raw_bars = {
-        "30m": bars_30m.assign(ts_close=bars_30m["timestamp"] + pd.Timedelta(minutes=30)),
-        "1h": resampled["1h"],
-        "4h": resampled["4h"],
-        "1d": _with_daily_close_ts(bars_1d),
+
+    resampled_by_scope = {
+        "regular": resample_cascade(bars_30m, regular_session_only=True),
+        "extended": resample_cascade(bars_30m, regular_session_only=False),
     }
 
     signals = {}
-    for timeframe in config.TIMEFRAMES:
-        df = _with_rsi(raw_bars[timeframe])
-        pivots = find_pivots(df, width=config.FRACTAL_WIDTH)
-        if not pivots.empty:
-            ts_close = df.loc[pivots["index"], "ts_close"].reset_index(drop=True)
-            pivots = pivots.assign(ts_close=ts_close)
-        divergence = find_latest_divergence(pivots) if not pivots.empty else None
-        signals[timeframe] = {"bars": df, "pivots": pivots, "divergence": divergence}
+    for timeframe in ("1h", "4h"):
+        signals[timeframe] = {
+            scope: _signals_for(_with_rsi(resampled_by_scope[scope][timeframe]))
+            for scope in SESSION_SCOPES[timeframe]
+        }
+    signals["1d"] = {"regular": _signals_for(_with_rsi(_with_daily_close_ts(bars_1d)))}
+
     return signals

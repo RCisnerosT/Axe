@@ -159,3 +159,37 @@ def test_find_latest_divergence_respects_lookback_bound():
     assert find_latest_divergence(pivots, lookback=3) is None
     # With the full history in view, the P0,P1 pair is found.
     assert find_latest_divergence(pivots, lookback=20) is not None
+
+
+def test_find_latest_divergence_rejects_pair_cut_by_a_lower_intervening_low():
+    # Reported against real charts (MSFT 1d, NVDA 4h, SOXS 1d): the shape
+    # matches between P0 and P2, but P1 is a lower low than P0 sitting
+    # between them -- a trader would compare against P1, not P0, so this
+    # isn't a valid divergence line even though P1 itself doesn't pair
+    # with P2 (its RSI doesn't clear the bar).
+    pivots = _low_pivots(
+        [
+            (100, 20),  # P0
+            (80, 18),  # P1 — a new, lower low; rsi also lower, so P1,P2 don't pair either
+            (90, 25),  # P2 — P0,P2 has the right shape, but P1 cuts the line
+        ]
+    )
+    assert find_latest_divergence(pivots) is None
+
+
+def test_find_latest_divergence_skips_cut_pair_for_a_clean_one_at_the_same_gap():
+    pivots = _low_pivots(
+        [
+            (100, 20),  # P0
+            (105, 30),  # P1 — doesn't cut P0,P2 (it's higher, not a new low)
+            (90, 28),  # P2 — P0,P2 is a valid, clean gap=2 divergence
+            (70, 15),  # P3 — cuts the P2,P4 pair below
+            (80, 35),  # P4 — P2,P4 has the right shape, but P3 cuts it
+        ]
+    )
+    result = find_latest_divergence(pivots)
+    assert result is not None
+    pivot_1, pivot_2, direction, strength = result
+    # The more recent (P2,P4) pair is rejected for being cut; (P0,P2) wins.
+    assert pivot_1["price_value"] == 100
+    assert pivot_2["price_value"] == 90

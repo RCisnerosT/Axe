@@ -32,13 +32,29 @@ def check_divergence(pivot_1, pivot_2, oversold: float = RSI_OVERSOLD, overbough
     return None
 
 
+def _is_cut_by_intervening_pivot(same_kind: pd.DataFrame, i: int, j: int, kind: str) -> bool:
+    """True if some pivot strictly between i and j is more extreme than
+    pivot_1 (i) — a lower low for bullish, a higher high for bearish. That
+    intervening pivot is the one a chart-reader would actually compare
+    against, so pairing pivot_2 with the older, less extreme pivot_1
+    "cuts through" it and isn't a valid divergence line."""
+    between = same_kind["price_value"].iloc[i + 1 : j]
+    if between.empty:
+        return False
+    anchor = same_kind["price_value"].iloc[i]
+    return (between < anchor).any() if kind == "low" else (between > anchor).any()
+
+
 def find_latest_divergence(pivots: pd.DataFrame, lookback: int = 20):
     """Searches the most recent `lookback` confirmed pivots of each kind
     for the tightest divergence pair — the one with the fewest other
     pivots skipped between pivot_1 and pivot_2. That mirrors how a
     divergence actually reads off a chart: the closest matching swing, not
     necessarily the single latest pivot paired with whatever's right
-    before it. Ties (same gap) are broken by recency. Returns (pivot_1,
+    before it. Ties (same gap) are broken by recency. A candidate pair is
+    skipped if an intervening pivot is more extreme than pivot_1 (see
+    `_is_cut_by_intervening_pivot`), even if that intervening pivot
+    doesn't itself form a valid divergence with pivot_2. Returns (pivot_1,
     pivot_2, direction, strength) for the first kind (low, then high) with
     a match, else None.
     """
@@ -50,7 +66,10 @@ def find_latest_divergence(pivots: pd.DataFrame, lookback: int = 20):
 
         for gap in range(1, n):
             for j in range(n - 1, gap - 1, -1):
-                pivot_1 = same_kind.iloc[j - gap]
+                i = j - gap
+                if _is_cut_by_intervening_pivot(same_kind, i, j, kind):
+                    continue
+                pivot_1 = same_kind.iloc[i]
                 pivot_2 = same_kind.iloc[j]
                 result = check_divergence(pivot_1, pivot_2)
                 if result:

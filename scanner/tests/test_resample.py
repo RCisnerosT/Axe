@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from resample import resample_cascade
+from resample import filter_regular_session, resample_cascade
 
 ET = "America/New_York"
 
@@ -149,7 +149,7 @@ def test_pre_market_bars_bucket_separately_from_regular_session():
     )
     now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")
 
-    result = resample_cascade(bars, now=now)
+    result = resample_cascade(bars, now=now, regular_session_only=False)
 
     # Pre-market bars (anchored to the 04:00 ET window open) form 4
     # buckets: [04:00,04:30), [05:00) alone, [08:00,08:30), [09:00) alone
@@ -170,8 +170,42 @@ def test_post_market_bars_form_their_own_clean_4h_bucket():
     )
     now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")
 
-    result = resample_cascade(bars, now=now)
+    result = resample_cascade(bars, now=now, regular_session_only=False)
 
     post_market_4h = result["4h"].iloc[-1]
     assert post_market_4h["timestamp"].tz_convert(ET).strftime("%H:%M") == "16:00"
     assert post_market_4h["volume"] == 8
+
+
+def test_filter_regular_session_drops_pre_and_post_market_bars():
+    pre_market_times = ["04:00", "04:30", "09:00"]
+    post_market_times = ["16:00", "17:00", "19:30"]
+    bars = pd.concat(
+        [
+            _bars("2026-01-05", pre_market_times, base_price=90),
+            _bars("2026-01-05", FULL_SESSION_TIMES),
+            _bars("2026-01-05", post_market_times, base_price=110),
+        ],
+        ignore_index=True,
+    )
+
+    filtered = filter_regular_session(bars)
+
+    assert len(filtered) == len(FULL_SESSION_TIMES)
+    assert filtered["timestamp"].min().tz_convert(ET).strftime("%H:%M") == "09:30"
+    assert filtered["timestamp"].max().tz_convert(ET).strftime("%H:%M") == "15:30"
+
+
+def test_resample_cascade_defaults_to_regular_session_only():
+    pre_market_times = ["04:00", "04:30", "09:00"]
+    bars = pd.concat(
+        [_bars("2026-01-05", pre_market_times, base_price=90), _bars("2026-01-05", FULL_SESSION_TIMES)],
+        ignore_index=True,
+    )
+    now = pd.Timestamp("2026-01-06 12:00", tz=ET).tz_convert("UTC")
+
+    result = resample_cascade(bars, now=now)
+
+    # No 1h bucket should start before the regular session's 9:30 ET open.
+    earliest = result["1h"]["timestamp"].min().tz_convert(ET).strftime("%H:%M")
+    assert earliest == "09:30"

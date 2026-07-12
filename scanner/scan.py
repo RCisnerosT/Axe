@@ -29,36 +29,39 @@ def check_health(supabase) -> None:
 def scan_ticker(supabase, alpaca, ticker: str) -> None:
     signals = pipeline.compute_signals(alpaca, ticker)
 
-    for timeframe, result in signals.items():
-        supabase_client.upsert_price_bars(supabase, ticker, timeframe, result["bars"])
-        ts_to_id = supabase_client.sync_pivots(supabase, ticker, timeframe, result["pivots"])
+    for timeframe, by_scope in signals.items():
+        for session_scope, result in by_scope.items():
+            supabase_client.upsert_price_bars(supabase, ticker, timeframe, result["bars"])
+            pivot_ids = supabase_client.sync_pivots(supabase, ticker, timeframe, session_scope, result["pivots"])
 
-        divergence = result["divergence"]
-        if divergence is None:
-            continue
+            divergence = result["divergence"]
+            if divergence is None:
+                continue
 
-        pivot_1, pivot_2, direction, strength = divergence
-        divergence_id = supabase_client.sync_divergence(
-            supabase,
-            ticker,
-            timeframe,
-            ts_to_id[pivot_1["ts"].isoformat()],
-            ts_to_id[pivot_2["ts"].isoformat()],
-            direction,
-            strength,
-            pivot_2["price_value"],
-        )
-        if divergence_id is not None:
-            telegram.send_divergence_alert(
+            pivot_1, pivot_2, direction, strength = divergence
+            divergence_id = supabase_client.sync_divergence(
+                supabase,
                 ticker,
                 timeframe,
+                session_scope,
+                pivot_ids[(pivot_1["ts"].isoformat(), pivot_1["kind"])],
+                pivot_ids[(pivot_2["ts"].isoformat(), pivot_2["kind"])],
                 direction,
                 strength,
                 pivot_2["price_value"],
-                pivot_1["ts_close"],
-                pivot_2["ts_close"],
             )
-            supabase_client.mark_alerted(supabase, divergence_id)
+            if divergence_id is not None:
+                telegram.send_divergence_alert(
+                    ticker,
+                    timeframe,
+                    session_scope,
+                    direction,
+                    strength,
+                    pivot_2["price_value"],
+                    pivot_1["ts_close"],
+                    pivot_2["ts_close"],
+                )
+                supabase_client.mark_alerted(supabase, divergence_id)
 
 
 def run_scan() -> None:

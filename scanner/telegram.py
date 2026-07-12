@@ -35,6 +35,7 @@ def send_message(text: str) -> None:
 def format_divergence_alert(
     ticker: str,
     timeframe: str,
+    session_scope: str,
     direction: str,
     strength: str,
     price: float,
@@ -42,8 +43,9 @@ def format_divergence_alert(
     pivot_2_ts: pd.Timestamp,
 ) -> str:
     strength_label = "STRONG" if strength == "strong" else "weak"
+    scope_label = "regular session" if session_scope == "regular" else "incl. pre/post"
     lines = [
-        f"<b>{direction.upper()} divergence</b> ({strength_label}) — {ticker} ({timeframe})",
+        f"<b>{direction.upper()} divergence</b> ({strength_label}) — {ticker} ({timeframe}, {scope_label})",
         f"Pivot 1: {_format_et_date(pivot_1_ts)}",
         f"Pivot 2: {_format_et_date(pivot_2_ts)}",
         f"Price at signal: {price:.2f}",
@@ -57,13 +59,16 @@ def format_divergence_alert(
 def send_divergence_alert(
     ticker: str,
     timeframe: str,
+    session_scope: str,
     direction: str,
     strength: str,
     price: float,
     pivot_1_ts: pd.Timestamp,
     pivot_2_ts: pd.Timestamp,
 ) -> None:
-    send_message(format_divergence_alert(ticker, timeframe, direction, strength, price, pivot_1_ts, pivot_2_ts))
+    send_message(
+        format_divergence_alert(ticker, timeframe, session_scope, direction, strength, price, pivot_1_ts, pivot_2_ts)
+    )
 
 
 def send_health_check_alert(hours_since_last_success: float) -> None:

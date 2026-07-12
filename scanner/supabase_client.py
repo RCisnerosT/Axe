@@ -50,12 +50,15 @@ def upsert_price_bars(client: Client, ticker: str, timeframe: str, bars: pd.Data
     client.table("price_bars").upsert(rows, on_conflict="ticker,timeframe,ts").execute()
 
 
-def sync_pivots(client: Client, ticker: str, timeframe: str, pivots: pd.DataFrame) -> dict:
+def sync_pivots(client: Client, ticker: str, timeframe: str, session_scope: str, pivots: pd.DataFrame) -> dict:
     """Insert any pivots not already stored (there's no DB-level unique
-    constraint on pivots, so dedup happens here by `ts`, which is stable
-    across scan runs since a given bar's timestamp never changes).
+    constraint on pivots, so dedup happens here by (ts, kind) — a single
+    bar can be both a high and a low pivot at once, so `ts` alone isn't a
+    unique key; and by session_scope, since the same bar's neighbors (and
+    therefore whether it's a pivot at all) can differ between the
+    regular-only and extended-hours pivot series.
 
-    Returns {ts: db_id} for every pivot in `pivots`, old and newly
+    Returns {(ts, kind): db_id} for every pivot in `pivots`, old and newly
     inserted, so callers can resolve the ids a divergence needs to
     reference.
     """
@@ -64,18 +67,20 @@ def sync_pivots(client: Client, ticker: str, timeframe: str, pivots: pd.DataFram
 
     existing = (
         client.table("pivots")
-        .select("id, ts")
+        .select("id, ts, kind")
         .eq("ticker", ticker)
         .eq("timeframe", timeframe)
+        .eq("session_scope", session_scope)
         .in_("ts", [ts.isoformat() for ts in pivots["ts"]])
         .execute()
     )
-    ts_to_id = {row["ts"]: row["id"] for row in existing.data}
+    key_to_id = {(row["ts"], row["kind"]): row["id"] for row in existing.data}
 
     new_rows = [
         {
             "ticker": ticker,
             "timeframe": timeframe,
+            "session_scope": session_scope,
             "ts": row["ts"].isoformat(),
             "kind": row["kind"],
             "price_value": float(row["price_value"]),
@@ -83,19 +88,23 @@ def sync_pivots(client: Client, ticker: str, timeframe: str, pivots: pd.DataFram
             "confirmed_at": row["ts"].isoformat(),
         }
         for _, row in pivots.iterrows()
-        if row["ts"].isoformat() not in ts_to_id
+        if (row["ts"].isoformat(), row["kind"]) not in key_to_id
     ]
     if new_rows:
         inserted = client.table("pivots").insert(new_rows).execute()
-        ts_to_id.update({row["ts"]: row["id"] for row in inserted.data})
+        key_to_id.update({(row["ts"], row["kind"]): row["id"] for row in inserted.data})
 
-    return {row["ts"].isoformat(): ts_to_id[row["ts"].isoformat()] for _, row in pivots.iterrows()}
+    return {
+        (row["ts"].isoformat(), row["kind"]): key_to_id[(row["ts"].isoformat(), row["kind"])]
+        for _, row in pivots.iterrows()
+    }
 
 
 def sync_divergence(
     client: Client,
     ticker: str,
     timeframe: str,
+    session_scope: str,
     pivot_1_id: int,
     pivot_2_id: int,
     direction: str,
@@ -121,6 +130,7 @@ def sync_divergence(
             {
                 "ticker": ticker,
                 "timeframe": timeframe,
+                "session_scope": session_scope,
                 "direction": direction,
                 "strength": strength,
                 "pivot_1_id": pivot_1_id,

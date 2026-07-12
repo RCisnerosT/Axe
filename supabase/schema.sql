@@ -4,6 +4,7 @@ create type pivot_kind_t as enum ('high', 'low');
 create type direction_t as enum ('bullish', 'bearish');
 create type divergence_status_t as enum ('active', 'invalidated', 'expired');
 create type divergence_strength_t as enum ('strong', 'weak');
+create type session_scope_t as enum ('regular', 'extended');
 create type exit_reason_t as enum ('opposite_signal', 'horizon', 'still_open');
 
 create table symbols (
@@ -35,6 +36,7 @@ create table pivots (
   id bigserial primary key,
   ticker text not null references symbols(ticker),
   timeframe timeframe_t not null,
+  session_scope session_scope_t not null default 'regular',
   ts timestamptz not null,
   kind pivot_kind_t not null,
   price_value numeric not null,
@@ -46,6 +48,7 @@ create table divergences (
   id bigserial primary key,
   ticker text not null references symbols(ticker),
   timeframe timeframe_t not null,
+  session_scope session_scope_t not null default 'regular',
   direction direction_t not null,
   strength divergence_strength_t not null default 'strong',
   pivot_1_id bigint not null references pivots(id),
