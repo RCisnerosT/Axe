@@ -9,6 +9,7 @@ scanner/.pytest_cache/
 .env
 .env.*
 scanner/.env
+!scanner/.env.example
 
 # Node / Next.js (dashboard)
 dashboard/node_modules/

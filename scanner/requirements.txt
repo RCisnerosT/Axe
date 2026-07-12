@@ -5,3 +5,4 @@ supabase
 requests
 pandas_market_calendars
 pytest
+python-dotenv
