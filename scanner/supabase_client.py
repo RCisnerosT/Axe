@@ -147,3 +147,31 @@ def mark_alerted(client: Client, divergence_id: int) -> None:
     client.table("divergences").update({"alerted_at": pd.Timestamp.now(tz="UTC").isoformat()}).eq(
         "id", divergence_id
     ).execute()
+
+
+def replace_backtest_results(client: Client, trades: list) -> None:
+    """backtest_results is a snapshot of the latest run, not an append-only
+    log like divergences -- wipe and reinsert rather than dedup, since
+    re-running the (deterministic) backtest over the same history would
+    otherwise just accumulate duplicate rows."""
+    client.table("backtest_results").delete().gte("id", 0).execute()
+    if not trades:
+        return
+
+    rows = [
+        {
+            "ticker": t["ticker"],
+            "timeframe": t["timeframe"],
+            "session_scope": t["session_scope"],
+            "direction": t["direction"],
+            "entry_ts": t["entry_ts"].isoformat(),
+            "entry_price": t["entry_price"],
+            "exit_ts": t["exit_ts"].isoformat() if t["exit_ts"] is not None else None,
+            "exit_price": t["exit_price"],
+            "exit_reason": t["exit_reason"],
+            "return_pct": t["return_pct"],
+        }
+        for t in trades
+    ]
+    for i in range(0, len(rows), 500):
+        client.table("backtest_results").insert(rows[i : i + 500]).execute()

@@ -58,7 +58,11 @@ def get_bars(
         start=start,
         end=end,
         feed=DataFeed.SIP,
-        adjustment=Adjustment.RAW,
+        # Split-adjusted, not dividend-adjusted -- unadjusted prices break
+        # across a reverse split (SOXL/SOXS do these often) with a fake
+        # multi-thousand-percent jump; dividend adjustment isn't relevant
+        # to price-action/RSI pivots the way it is for total-return calcs.
+        adjustment=Adjustment.SPLIT,
     )
     bars = client.get_stock_bars(request)
     df = bars.df

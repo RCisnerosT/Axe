@@ -63,6 +63,7 @@ create table backtest_results (
   id bigserial primary key,
   ticker text not null references symbols(ticker),
   timeframe timeframe_t not null,
+  session_scope session_scope_t not null default 'regular',
   direction direction_t not null,
   entry_ts timestamptz not null,
   entry_price numeric not null,
