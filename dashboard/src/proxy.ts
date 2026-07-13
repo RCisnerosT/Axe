@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sessionOptions, type SessionData } from "@/lib/session";
 
 export async function proxy(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/login")) {
+  // /login: unauthenticated by definition. /api/trigger-scan: hit by
+  // cron-job.org, authenticated by its own TRIGGER_SECRET query param
+  // instead of the session cookie.
+  if (request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/api/trigger-scan")) {
     return NextResponse.next();
   }
 
