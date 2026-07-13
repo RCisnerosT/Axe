@@ -1,17 +1,63 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MOCK_TRADES, mockSummary } from "./mock-data";
+import { getSupabaseClient } from "@/lib/supabase";
+import type { BacktestResult } from "@/lib/types";
 
-export default function BacktestPage() {
-  const summary = mockSummary(MOCK_TRADES);
+export const dynamic = "force-dynamic";
+
+const ET = "America/New_York";
+const PAGE_SIZE = 1000;
+const TABLE_ROW_LIMIT = 200;
+
+function formatDate(ts: string) {
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: ET });
+}
+
+async function getAllBacktestResults(): Promise<BacktestResult[]> {
+  const supabase = getSupabaseClient();
+  const all: BacktestResult[] = [];
+  let page = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("backtest_results")
+      .select("*")
+      .order("entry_ts", { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...(data as BacktestResult[]));
+    if (data.length < PAGE_SIZE) break;
+    page += 1;
+  }
+
+  return all;
+}
+
+function summarize(trades: BacktestResult[]) {
+  const closed = trades.filter((t) => t.return_pct !== null);
+  const wins = closed.filter((t) => (t.return_pct as number) > 0);
+  const winRate = closed.length ? (wins.length / closed.length) * 100 : 0;
+  const avgReturn = closed.length
+    ? closed.reduce((sum, t) => sum + (t.return_pct as number), 0) / closed.length
+    : 0;
+  return { totalTrades: trades.length, closedTrades: closed.length, winRate, avgReturn };
+}
+
+export default async function BacktestPage() {
+  const trades = await getAllBacktestResults();
+  const summary = summarize(trades);
+  const shown = trades.slice(0, TABLE_ROW_LIMIT);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-foreground">Backtest results</h1>
         <p className="text-sm text-muted-foreground">
-          Mock data — scanner/backtest.py hasn&apos;t been built yet. No slippage/commissions modeled once real.
+          No slippage/commissions modeled — real-world results will be worse. Showing the {shown.length} most
+          recent of {summary.totalTrades} trades.
         </p>
       </div>
 
@@ -42,7 +88,7 @@ export default function BacktestPage() {
             className={`text-2xl font-semibold ${summary.avgReturn >= 0 ? "text-emerald-500" : "text-destructive"}`}
           >
             {summary.avgReturn >= 0 ? "+" : ""}
-            {summary.avgReturn.toFixed(1)}%
+            {summary.avgReturn.toFixed(2)}%
           </CardContent>
         </Card>
       </div>
@@ -53,6 +99,7 @@ export default function BacktestPage() {
             <TableRow>
               <TableHead>Ticker</TableHead>
               <TableHead>Timeframe</TableHead>
+              <TableHead>Session</TableHead>
               <TableHead>Direction</TableHead>
               <TableHead>Entry</TableHead>
               <TableHead>Exit</TableHead>
@@ -61,10 +108,13 @@ export default function BacktestPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {MOCK_TRADES.map((t, i) => (
-              <TableRow key={i}>
+            {shown.map((t) => (
+              <TableRow key={t.id}>
                 <TableCell className="font-medium text-foreground">{t.ticker}</TableCell>
                 <TableCell className="text-muted-foreground">{t.timeframe}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {t.session_scope === "extended" ? "incl. pre/post" : "regular"}
+                </TableCell>
                 <TableCell>
                   <Badge
                     variant={t.direction === "bullish" ? "default" : "destructive"}
@@ -73,15 +123,19 @@ export default function BacktestPage() {
                     {t.direction}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{t.entryDate}</TableCell>
-                <TableCell className="text-muted-foreground">{t.exitDate ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{t.exitReason}</TableCell>
+                <TableCell className="text-muted-foreground">{formatDate(t.entry_ts)}</TableCell>
+                <TableCell className="text-muted-foreground">{t.exit_ts ? formatDate(t.exit_ts) : "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{t.exit_reason}</TableCell>
                 <TableCell
                   className={`text-right font-mono ${
-                    t.returnPct === null ? "text-muted-foreground" : t.returnPct >= 0 ? "text-emerald-500" : "text-destructive"
+                    t.return_pct === null
+                      ? "text-muted-foreground"
+                      : t.return_pct >= 0
+                        ? "text-emerald-500"
+                        : "text-destructive"
                   }`}
                 >
-                  {t.returnPct === null ? "open" : `${t.returnPct >= 0 ? "+" : ""}${t.returnPct.toFixed(1)}%`}
+                  {t.return_pct === null ? "open" : `${t.return_pct >= 0 ? "+" : ""}${t.return_pct.toFixed(1)}%`}
                 </TableCell>
               </TableRow>
             ))}

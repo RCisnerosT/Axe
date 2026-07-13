@@ -56,3 +56,19 @@ export interface DivergenceWithPivots extends Divergence {
   pivot_1: Pivot;
   pivot_2: Pivot;
 }
+
+export type ExitReason = "opposite_signal" | "horizon" | "still_open";
+
+export interface BacktestResult {
+  id: number;
+  ticker: string;
+  timeframe: Timeframe;
+  session_scope: SessionScope;
+  direction: Direction;
+  entry_ts: string;
+  entry_price: number;
+  exit_ts: string | null;
+  exit_price: number | null;
+  exit_reason: ExitReason;
+  return_pct: number | null;
+}
