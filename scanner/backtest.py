@@ -3,13 +3,13 @@ import pandas as pd
 import config
 import supabase_client
 from alpaca_client import get_client
-from divergence import _is_cut_by_intervening_pivot, check_divergence
+from divergence import _is_cut_by_intervening_bar, _is_cut_by_intervening_pivot, check_divergence
 from pipeline import compute_signals
 
 BAR_LOOKBACK_DAYS = 180
 
 
-def _divergence_ending_at(same_kind: pd.DataFrame, j: int, kind: str, lookback: int):
+def _divergence_ending_at(bars: pd.DataFrame, same_kind: pd.DataFrame, j: int, kind: str, lookback: int):
     """Search backward from pivot `j` for the nearest (fewest pivots
     skipped) valid, uncut divergence pair with pivot_2 = same_kind[j].
     Unlike find_latest_divergence (which searches a whole window for the
@@ -21,24 +21,28 @@ def _divergence_ending_at(same_kind: pd.DataFrame, j: int, kind: str, lookback: 
         i = j - gap
         if _is_cut_by_intervening_pivot(same_kind, i, j, kind):
             continue
-        result = check_divergence(same_kind.iloc[i], same_kind.iloc[j])
+        pivot_1, pivot_2 = same_kind.iloc[i], same_kind.iloc[j]
+        if _is_cut_by_intervening_bar(bars, pivot_1, pivot_2, kind):
+            continue
+        result = check_divergence(pivot_1, pivot_2)
         if result:
             direction, strength = result
-            return same_kind.iloc[i], same_kind.iloc[j], direction, strength
+            return pivot_1, pivot_2, direction, strength
     return None
 
 
-def replay_divergences(pivots: pd.DataFrame, lookback: int = 20) -> list:
+def replay_divergences(bars: pd.DataFrame, pivots: pd.DataFrame, lookback: int = 20) -> list:
     """Replay divergence detection bar-by-bar over `pivots`' full history:
     for every pivot, at the moment it's confirmed, check whether it forms
     a fresh divergence within its own kind. Returns a chronological
     (by confirmed_index) list of (pivot_1, pivot_2, direction, strength).
     """
+    bars = bars.reset_index(drop=True)
     signals = []
     for kind in ("low", "high"):
         same_kind = pivots[pivots["kind"] == kind].sort_values("ts").reset_index(drop=True)
         for j in range(1, len(same_kind)):
-            result = _divergence_ending_at(same_kind, j, kind, lookback)
+            result = _divergence_ending_at(bars, same_kind, j, kind, lookback)
             if result:
                 signals.append(result)
     signals.sort(key=lambda s: s[1]["confirmed_index"])
@@ -56,7 +60,7 @@ def simulate_trades(bars: pd.DataFrame, pivots: pd.DataFrame, timeframe: str, lo
     if pivots.empty or bars.empty:
         return []
 
-    signals = replay_divergences(pivots, lookback=lookback)
+    signals = replay_divergences(bars, pivots, lookback=lookback)
     horizon = config.BACKTEST_HORIZON_BARS[timeframe]
     trades = []
 

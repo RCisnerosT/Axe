@@ -6,6 +6,7 @@ import config
 import pipeline
 import supabase_client
 import telegram
+from divergence import is_invalidated
 
 
 def check_health(supabase) -> None:
@@ -33,6 +34,19 @@ def scan_ticker(supabase, alpaca, ticker: str) -> None:
         for session_scope, result in by_scope.items():
             supabase_client.upsert_price_bars(supabase, ticker, timeframe, result["bars"])
             pivot_ids = supabase_client.sync_pivots(supabase, ticker, timeframe, session_scope, result["pivots"])
+
+            active = supabase_client.fetch_active_divergences(supabase, ticker, timeframe, session_scope)
+            stale_ids = [
+                row["id"]
+                for row in active
+                if is_invalidated(
+                    row["pivot_2"]["kind"],
+                    row["pivot_2"]["price_value"],
+                    pd.Timestamp(row["pivot_2"]["ts"]),
+                    result["bars"],
+                )
+            ]
+            supabase_client.invalidate_divergences(supabase, stale_ids)
 
             divergence = result["divergence"]
             if divergence is None:

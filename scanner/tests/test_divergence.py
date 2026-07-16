@@ -1,11 +1,26 @@
 import pandas as pd
 import pytest
 
-from divergence import check_divergence, find_latest_divergence
+from divergence import check_divergence, find_latest_divergence, is_invalidated
 
 
 def pivot(kind, price, rsi):
     return {"kind": kind, "price_value": price, "rsi_value": rsi}
+
+
+def _bars_for(pivots: pd.DataFrame) -> pd.DataFrame:
+    """A raw bar series with a value only at each pivot's own index --
+    other bars are filled with a value that can never look "more extreme"
+    than any pivot, so `_is_cut_by_intervening_bar` behaves exactly like
+    the confirmed-pivot-only check for these hand-built pivot lists (which
+    intentionally list every bar, with no unconfirmed wicks in between)."""
+    n = int(pivots["index"].max()) + 1
+    low = pd.Series([float("inf")] * n, dtype=float)
+    high = pd.Series([float("-inf")] * n, dtype=float)
+    for _, p in pivots.iterrows():
+        target = low if p["kind"] == "low" else high
+        target.iloc[int(p["index"])] = p["price_value"]
+    return pd.DataFrame({"low": low, "high": high})
 
 
 # Each case: (pivot_1, pivot_2, expected) where expected is (direction, strength) or None
@@ -45,12 +60,12 @@ def test_divergence_definition(name, pivot_1, pivot_2, expected):
 def test_find_latest_divergence_picks_most_recent_pair():
     pivots = pd.DataFrame(
         [
-            {"ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 110, "rsi_value": 20},
-            {"ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 100, "rsi_value": 25},
-            {"ts": pd.Timestamp("2026-01-03"), "kind": "low", "price_value": 90, "rsi_value": 33},
+            {"index": 0, "ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 110, "rsi_value": 20},
+            {"index": 1, "ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 100, "rsi_value": 25},
+            {"index": 2, "ts": pd.Timestamp("2026-01-03"), "kind": "low", "price_value": 90, "rsi_value": 33},
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     pivot_1, pivot_2, direction, strength = result
     assert direction == "bullish"
@@ -62,11 +77,11 @@ def test_find_latest_divergence_picks_most_recent_pair():
 def test_find_latest_divergence_returns_weak_when_outside_zone():
     pivots = pd.DataFrame(
         [
-            {"ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 100, "rsi_value": 45},
-            {"ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 90, "rsi_value": 50},
+            {"index": 0, "ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 100, "rsi_value": 45},
+            {"index": 1, "ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 90, "rsi_value": 50},
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     _, _, direction, strength = result
     assert direction == "bullish"
@@ -76,17 +91,23 @@ def test_find_latest_divergence_returns_weak_when_outside_zone():
 def test_find_latest_divergence_returns_none_when_no_match():
     pivots = pd.DataFrame(
         [
-            {"ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 90, "rsi_value": 25},
-            {"ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 100, "rsi_value": 32},
+            {"index": 0, "ts": pd.Timestamp("2026-01-01"), "kind": "low", "price_value": 90, "rsi_value": 25},
+            {"index": 1, "ts": pd.Timestamp("2026-01-02"), "kind": "low", "price_value": 100, "rsi_value": 32},
         ]
     )
-    assert find_latest_divergence(pivots) is None
+    assert find_latest_divergence(pivots, _bars_for(pivots)) is None
 
 
 def _low_pivots(rows):
     return pd.DataFrame(
         [
-            {"ts": pd.Timestamp("2026-01-01") + pd.Timedelta(hours=i), "kind": "low", "price_value": p, "rsi_value": r}
+            {
+                "index": i,
+                "ts": pd.Timestamp("2026-01-01") + pd.Timedelta(hours=i),
+                "kind": "low",
+                "price_value": p,
+                "rsi_value": r,
+            }
             for i, (p, r) in enumerate(rows)
         ]
     )
@@ -102,7 +123,7 @@ def test_find_latest_divergence_skips_a_non_matching_intermediate_pivot():
             (698.95, 25.59),  # P2 — but P0,P2 (gap=2) is a valid bullish divergence
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     pivot_1, pivot_2, direction, strength = result
     assert direction == "bullish"
@@ -119,7 +140,7 @@ def test_find_latest_divergence_prefers_smaller_gap_over_more_recent_pivot():
             (85, 22),  # P3 — P2,P3 no match; P0,P3 (gap=3) *would* match too
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     pivot_1, pivot_2, direction, strength = result
     # The tighter (gap=1) pair wins even though it isn't the most recent pivot.
@@ -137,7 +158,7 @@ def test_find_latest_divergence_breaks_gap_ties_by_recency():
             (70, 28),  # P4 — P3,P4 valid gap=1 (more recent)
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     pivot_1, pivot_2, direction, strength = result
     # Two gap=1 matches exist; the more recent one wins the tie.
@@ -155,10 +176,11 @@ def test_find_latest_divergence_respects_lookback_bound():
             (99, 29),  # P4
         ]
     )
+    bars = _bars_for(pivots)
     # Only the last 3 pivots (P2,P3,P4) are considered — none of them diverge.
-    assert find_latest_divergence(pivots, lookback=3) is None
+    assert find_latest_divergence(pivots, bars, lookback=3) is None
     # With the full history in view, the P0,P1 pair is found.
-    assert find_latest_divergence(pivots, lookback=20) is not None
+    assert find_latest_divergence(pivots, bars, lookback=20) is not None
 
 
 def test_find_latest_divergence_rejects_pair_cut_by_a_lower_intervening_low():
@@ -174,7 +196,7 @@ def test_find_latest_divergence_rejects_pair_cut_by_a_lower_intervening_low():
             (90, 25),  # P2 — P0,P2 has the right shape, but P1 cuts the line
         ]
     )
-    assert find_latest_divergence(pivots) is None
+    assert find_latest_divergence(pivots, _bars_for(pivots)) is None
 
 
 def test_find_latest_divergence_skips_cut_pair_for_a_clean_one_at_the_same_gap():
@@ -187,9 +209,96 @@ def test_find_latest_divergence_skips_cut_pair_for_a_clean_one_at_the_same_gap()
             (80, 35),  # P4 — P2,P4 has the right shape, but P3 cuts it
         ]
     )
-    result = find_latest_divergence(pivots)
+    result = find_latest_divergence(pivots, _bars_for(pivots))
     assert result is not None
     pivot_1, pivot_2, direction, strength = result
     # The more recent (P2,P4) pair is rejected for being cut; (P0,P2) wins.
     assert pivot_1["price_value"] == 100
     assert pivot_2["price_value"] == 90
+
+
+def test_find_latest_divergence_rejects_pair_cut_by_a_wick_that_never_confirmed_as_a_pivot():
+    # A tied double bottom at raw bars 1 and 2 (both 85) never confirms as
+    # its own fractal pivot -- neither bar is *strictly* less than the
+    # other -- so it's invisible to `_is_cut_by_intervening_pivot`, which
+    # only sees the pre-filtered pivot list. But it's still a lower low
+    # than P0 sitting between P0 and P2 on the actual chart, so the pair
+    # must still be rejected.
+    pivots = pd.DataFrame(
+        [
+            {"index": 0, "ts": pd.Timestamp("2026-01-01T00:00"), "kind": "low", "price_value": 100, "rsi_value": 20},
+            {"index": 3, "ts": pd.Timestamp("2026-01-01T03:00"), "kind": "low", "price_value": 90, "rsi_value": 25},
+        ]
+    )
+    bars = pd.DataFrame(
+        {
+            "low": [100.0, 85.0, 85.0, 90.0],
+            "high": [110.0, 110.0, 110.0, 110.0],
+        }
+    )
+    assert find_latest_divergence(pivots, bars) is None
+
+
+def test_find_latest_divergence_allows_pair_with_no_intervening_wick():
+    pivots = pd.DataFrame(
+        [
+            {"index": 0, "ts": pd.Timestamp("2026-01-01T00:00"), "kind": "low", "price_value": 100, "rsi_value": 20},
+            {"index": 3, "ts": pd.Timestamp("2026-01-01T03:00"), "kind": "low", "price_value": 90, "rsi_value": 25},
+        ]
+    )
+    bars = pd.DataFrame(
+        {
+            "low": [100.0, 105.0, 102.0, 90.0],
+            "high": [110.0, 110.0, 110.0, 110.0],
+        }
+    )
+    result = find_latest_divergence(pivots, bars)
+    assert result is not None
+    _, _, direction, strength = result
+    assert direction == "bullish"
+
+
+def test_is_invalidated_true_when_a_later_bar_breaks_a_bullish_pivot_2():
+    bars = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02"), pd.Timestamp("2026-01-03")],
+            "low": [90.0, 89.0, 85.0],
+            "high": [95.0, 94.0, 90.0],
+        }
+    )
+    assert is_invalidated("low", 90, pd.Timestamp("2026-01-01"), bars) is True
+
+
+def test_is_invalidated_false_when_price_stays_above_a_bullish_pivot_2():
+    bars = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
+            "low": [90.0, 91.0],
+            "high": [95.0, 96.0],
+        }
+    )
+    assert is_invalidated("low", 90, pd.Timestamp("2026-01-01"), bars) is False
+
+
+def test_is_invalidated_ignores_pivot_2s_own_bar():
+    # pivot_2's own bar naturally touches its own price -- only bars
+    # *after* it should be able to invalidate it.
+    bars = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2026-01-01")],
+            "low": [90.0],
+            "high": [95.0],
+        }
+    )
+    assert is_invalidated("low", 90, pd.Timestamp("2026-01-01"), bars) is False
+
+
+def test_is_invalidated_true_when_a_later_bar_breaks_a_bearish_pivot_2():
+    bars = pd.DataFrame(
+        {
+            "ts": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
+            "low": [90.0, 91.0],
+            "high": [100.0, 105.0],
+        }
+    )
+    assert is_invalidated("high", 100, pd.Timestamp("2026-01-01"), bars) is True

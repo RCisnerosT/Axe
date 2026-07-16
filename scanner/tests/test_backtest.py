@@ -46,7 +46,8 @@ def test_replay_divergences_finds_bullish_pair():
             _pivot(5, "low", 90, 32),
         ]
     )
-    signals = replay_divergences(pivots)
+    bars = _bars([100, 100, 100, 100, 100, 90, 100, 100])
+    signals = replay_divergences(bars, pivots)
     assert len(signals) == 1
     pivot_1, pivot_2, direction, strength = signals[0]
     assert direction == "bullish"
@@ -65,7 +66,8 @@ def test_replay_divergences_rejects_cut_pair():
             _pivot(6, "low", 90, 25),
         ]
     )
-    signals = replay_divergences(pivots)
+    bars = _bars([100, 100, 100, 80, 100, 100, 90, 100])
+    signals = replay_divergences(bars, pivots)
     assert signals == []
 
 

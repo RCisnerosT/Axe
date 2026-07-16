@@ -143,6 +143,28 @@ def sync_divergence(
     return inserted.data[0]["id"]
 
 
+def fetch_active_divergences(client: Client, ticker: str, timeframe: str, session_scope: str) -> list:
+    """Active divergences for this ticker/timeframe/scope, joined with
+    pivot_2 -- the point whose price a later bar breaking past would
+    invalidate the signal (see divergence.is_invalidated)."""
+    result = (
+        client.table("divergences")
+        .select("id, pivot_2:pivots!divergences_pivot_2_id_fkey(kind, price_value, ts)")
+        .eq("ticker", ticker)
+        .eq("timeframe", timeframe)
+        .eq("session_scope", session_scope)
+        .eq("status", "active")
+        .execute()
+    )
+    return result.data
+
+
+def invalidate_divergences(client: Client, divergence_ids: list) -> None:
+    if not divergence_ids:
+        return
+    client.table("divergences").update({"status": "invalidated"}).in_("id", divergence_ids).execute()
+
+
 def mark_alerted(client: Client, divergence_id: int) -> None:
     client.table("divergences").update({"alerted_at": pd.Timestamp.now(tz="UTC").isoformat()}).eq(
         "id", divergence_id

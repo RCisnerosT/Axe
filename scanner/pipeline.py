@@ -43,7 +43,7 @@ def _signals_for(df: pd.DataFrame) -> dict:
     if not pivots.empty:
         ts_close = df.loc[pivots["index"], "ts_close"].reset_index(drop=True)
         pivots = pivots.assign(ts_close=ts_close)
-    divergence = find_latest_divergence(pivots) if not pivots.empty else None
+    divergence = find_latest_divergence(pivots, df) if not pivots.empty else None
     return {"bars": df, "pivots": pivots, "divergence": divergence}
 
 
