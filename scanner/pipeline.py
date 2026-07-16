@@ -10,7 +10,6 @@ from pivots import find_pivots
 from resample import NYSE, resample_cascade
 
 SESSION_SCOPES = {
-    "1h": ("regular", "extended"),
     "4h": ("regular", "extended"),
     "1d": ("regular",),  # daily bars have no pre/post-market concept
 }
@@ -49,11 +48,13 @@ def _signals_for(df: pd.DataFrame) -> dict:
 
 def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
     """Fetch real Alpaca bars for `ticker` and run pivot/divergence
-    detection on every (timeframe, session_scope) combination: 1h/4h are
+    detection on every (timeframe, session_scope) combination: 4h is
     computed both on regular-session-only bars and on the full
     pre+regular+post extended set, since thin pre/post-market volume can
     produce different (often noisier) pivots than regular hours alone. 1d
-    only has a "regular" scope.
+    only has a "regular" scope. 1h is deliberately not scanned for
+    signals -- too noisy at this universe's timeframe -- though 30m bars
+    still get resampled through it as the base for 4h (see resample.py).
 
     Returns {timeframe: {session_scope: {"bars": DataFrame,
     "pivots": DataFrame, "divergence": (pivot_1, pivot_2, direction,
@@ -70,7 +71,7 @@ def compute_signals(client, ticker: str, lookback_days: int = 60) -> dict:
     }
 
     signals = {}
-    for timeframe in ("1h", "4h"):
+    for timeframe in ("4h",):
         signals[timeframe] = {
             scope: _signals_for(_with_rsi(resampled_by_scope[scope][timeframe]))
             for scope in SESSION_SCOPES[timeframe]

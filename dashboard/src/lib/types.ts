@@ -1,4 +1,8 @@
 export type Timeframe = "1h" | "4h" | "1d";
+// 1h bars/pivots still exist historically, but scan.py no longer produces
+// new signals for it -- only 4h/1d are actively scanned, so that's all the
+// dashboard displays going forward.
+export type DisplayTimeframe = Exclude<Timeframe, "1h">;
 export type SessionScope = "regular" | "extended";
 export type PivotKind = "high" | "low";
 export type Direction = "bullish" | "bearish";

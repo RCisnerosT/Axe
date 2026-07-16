@@ -22,6 +22,9 @@ async function getActiveDivergences(): Promise<DivergenceWithPivots[]> {
       pivot_2:pivots!divergences_pivot_2_id_fkey(*)`,
     )
     .eq("status", "active")
+    // 1h signals aren't scanned anymore (see pipeline.py) -- only surface
+    // the timeframes still actively maintained.
+    .in("timeframe", ["4h", "1d"])
     .order("detected_at", { ascending: false });
 
   if (error) throw error;

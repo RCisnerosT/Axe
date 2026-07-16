@@ -41,11 +41,11 @@ def test_compute_signals_runs_end_to_end_for_all_timeframes_and_scopes():
                 assert pivot_2["ts_close"] > pivot_2["ts"]
 
 
-def test_1h_extended_has_more_or_equal_bars_than_regular():
+def test_4h_extended_has_more_or_equal_bars_than_regular():
     client = get_client()
 
     signals = compute_signals(client, "AAPL", lookback_days=30)
 
-    regular_bars = len(signals["1h"]["regular"]["bars"])
-    extended_bars = len(signals["1h"]["extended"]["bars"])
+    regular_bars = len(signals["4h"]["regular"]["bars"])
+    extended_bars = len(signals["4h"]["extended"]["bars"])
     assert extended_bars >= regular_bars

@@ -2,19 +2,22 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import type { DivergenceWithPivots, PriceBar, Pivot, Timeframe } from "@/lib/types";
+import type { DivergenceWithPivots, PriceBar, Pivot, DisplayTimeframe } from "@/lib/types";
 import { PriceRsiChart } from "./price-rsi-chart";
 
-const TIMEFRAMES: Timeframe[] = ["1h", "4h", "1d"];
+const TIMEFRAMES: DisplayTimeframe[] = ["4h", "1d"];
 
 export function SymbolChart({
   dataByTimeframe,
 }: {
   ticker: string;
-  dataByTimeframe: Record<Timeframe, { bars: PriceBar[]; pivots: Pivot[]; divergence: DivergenceWithPivots | null }>;
+  dataByTimeframe: Record<
+    DisplayTimeframe,
+    { bars: PriceBar[]; pivots: Pivot[]; divergence: DivergenceWithPivots | null }
+  >;
 }) {
   return (
-    <Tabs defaultValue="1h">
+    <Tabs defaultValue="4h">
       <TabsList>
         {TIMEFRAMES.map((tf) => (
           <TabsTrigger key={tf} value={tf}>

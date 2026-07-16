@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase";
-import type { DivergenceWithPivots, PriceBar, Pivot, Timeframe } from "@/lib/types";
+import type { DivergenceWithPivots, PriceBar, Pivot, DisplayTimeframe } from "@/lib/types";
 import { SymbolChart } from "./symbol-chart";
 
 export const dynamic = "force-dynamic";
 
-const TIMEFRAMES: Timeframe[] = ["1h", "4h", "1d"];
+const TIMEFRAMES: DisplayTimeframe[] = ["4h", "1d"];
 
 export default async function SymbolPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker } = await params;
@@ -15,10 +15,9 @@ export default async function SymbolPage({ params }: { params: Promise<{ ticker:
   if (!symbol) notFound();
 
   const dataByTimeframe: Record<
-    Timeframe,
+    DisplayTimeframe,
     { bars: PriceBar[]; pivots: Pivot[]; divergence: DivergenceWithPivots | null }
   > = {
-    "1h": { bars: [], pivots: [], divergence: null },
     "4h": { bars: [], pivots: [], divergence: null },
     "1d": { bars: [], pivots: [], divergence: null },
   };
