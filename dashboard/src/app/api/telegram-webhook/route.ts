@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseClient } from "@/lib/supabase";
 
 // Telegram webhook: user sends any message (e.g. a pasted @cobraalerts post)
 // to Axe's existing bot, this does brief AI research + a price chart via
@@ -7,8 +8,14 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const TELEGRAM_API = "https://api.telegram.org";
 const OPENAI_MODEL = "gpt-5-mini";
+const DEDUP_WINDOW_HOURS = 24;
+
+// OpenAI's web-search-augmented call can run long; give the function more
+// room than Vercel's default so it isn't killed mid-request.
+export const maxDuration = 60;
 
 interface TelegramUpdate {
+  update_id: number;
   message?: {
     chat: { id: number };
     text?: string;
@@ -121,6 +128,33 @@ async function buildChartUrl(ticker: string, strike: number | null, expiration: 
   }
 }
 
+// Telegram retries the webhook (re-sending the same update) if it doesn't
+// get a response quickly enough -- the OpenAI + chart pipeline below easily
+// takes longer than that. Claim the update_id first so a retried delivery
+// of the same message is a no-op instead of running the whole thing twice.
+async function claimUpdate(updateId: number): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("telegram_updates").insert({ update_id: updateId });
+  return !error; // error (unique violation) means we've already claimed this update_id
+}
+
+async function alreadyQueriedRecently(ticker: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const since = new Date(Date.now() - DEDUP_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("telegram_queries")
+    .select("id")
+    .eq("ticker", ticker)
+    .gte("requested_at", since)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+async function recordQuery(ticker: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  await supabase.from("telegram_queries").insert({ ticker });
+}
+
 async function sendTelegramMessage(text: string): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -153,14 +187,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true }); // ignore anything not from the owner's chat
   }
 
+  if (!(await claimUpdate(update.update_id))) {
+    return NextResponse.json({ ok: true }); // already processed this exact update (Telegram retry)
+  }
+
   try {
     const research = await callOpenAI(message.text);
+    const ticker = research.ticker?.toUpperCase() ?? null;
+
+    if (ticker && (await alreadyQueriedRecently(ticker))) {
+      await sendTelegramMessage(`Ya te mande el analisis de <b>${ticker}</b> en las ultimas ${DEDUP_WINDOW_HOURS}h -- no lo repito.`);
+      return NextResponse.json({ ok: true });
+    }
+
     await sendTelegramMessage(`<b>Analisis</b>\n\n${research.summary}`);
 
-    if (research.ticker) {
-      const chartUrl = await buildChartUrl(research.ticker, research.strike, research.expiration);
+    if (ticker) {
+      await recordQuery(ticker);
+      const chartUrl = await buildChartUrl(ticker, research.strike, research.expiration);
       if (chartUrl) {
-        await sendTelegramPhoto(chartUrl, research.ticker);
+        await sendTelegramPhoto(chartUrl, ticker);
       }
     }
   } catch (error) {

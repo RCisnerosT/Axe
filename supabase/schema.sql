@@ -84,3 +84,22 @@ create table scan_runs (
   status text not null default 'running' check (status in ('running', 'success', 'failed')),
   error text
 );
+
+-- Dedup store for /api/telegram-webhook: avoids re-running the OpenAI +
+-- chart pipeline (and re-sending the same analysis) if the same ticker is
+-- asked about again within the dedup window.
+create table telegram_queries (
+  id bigserial primary key,
+  ticker text not null,
+  requested_at timestamptz not null default now()
+);
+
+create index telegram_queries_ticker_requested_at_idx on telegram_queries (ticker, requested_at desc);
+
+-- Idempotency store for /api/telegram-webhook: Telegram retries the webhook
+-- (re-sending the same update_id) if it doesn't get a fast enough response,
+-- which otherwise runs the whole OpenAI + chart pipeline twice per message.
+create table telegram_updates (
+  update_id bigint primary key,
+  received_at timestamptz not null default now()
+);
